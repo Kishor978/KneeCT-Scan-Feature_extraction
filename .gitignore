@@ -192,3 +192,7 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+
+3702_left_knee.nii
+3702_left_knee.nii.gz
+*.gif
