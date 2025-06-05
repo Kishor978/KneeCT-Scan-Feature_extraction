@@ -4,7 +4,7 @@ from scipy import ndimage
 import matplotlib.pyplot as plt
 from scipy.ndimage import binary_fill_holes
 from matplotlib.animation import FuncAnimation
-from utils import load_ct_data, save_nifti,visualize_segmentation,create_segmentation_animation,apply_morphological_operations
+from utils import load_ct_data, save_nifti, visualize_segmentation, create_segmentation_animation,apply_morphological_operations, prepare_regions_for_cnn
 
 def preprocess_volume(data, sigma=1.0):
     """
@@ -39,8 +39,9 @@ def threshold_bones(data, threshold=250):
     return bone_mask
 
 def fill_3d_holes(binary_mask):
+    """Fill holes in 3D binary mask along each axis."""
     filled = np.copy(binary_mask)
-# Fill holes along each 2D axis slice
+    # Fill holes along each 2D axis slice
     for axis in range(3):
         for i in range(binary_mask.shape[axis]):
             slicer = [slice(None)] * 3
@@ -49,7 +50,6 @@ def fill_3d_holes(binary_mask):
             filled_slice = binary_fill_holes(slice_2d)
             filled[tuple(slicer)] = filled_slice
     return filled
-
 
 def separate_femur_tibia(bone_mask, min_size=1000):
     """
@@ -101,7 +101,7 @@ def separate_femur_tibia(bone_mask, min_size=1000):
             return comp, np.zeros_like(comp)
 
         z_min, z_max = z_vals[0], z_vals[-1]
-        z_split = int(z_min + 0.51 * (z_max - z_min))  # 45% height
+        z_split = int(z_min + 0.51 * (z_max - z_min))  # 51% height for better separation
 
         femur_mask = np.copy(comp)
         femur_mask[:, :, z_split:] = 0
@@ -117,9 +117,31 @@ def separate_femur_tibia(bone_mask, min_size=1000):
         print("No valid components found.")
         return np.zeros_like(bone_mask), np.zeros_like(bone_mask)
 
-def bone_segmentation(input_path, output_dir, bone_threshold=300, min_component_size=10000, morph_iterations=2, visualize=True):
+def create_color_coded_mask(femur_mask, tibia_mask):
     """
-    Main function for bone segmentation.
+    Create a color-coded mask following Task III specifications:
+    - Tibia region: Green (value = 1)
+    - Femur region: Red (value = 2)  
+    - Background: Black (value = 0)
+    
+    Args:
+        femur_mask: Binary mask of femur
+        tibia_mask: Binary mask of tibia
+        
+    Returns:
+        color_mask: Color-coded mask with values 0, 1, 2
+    """
+    color_mask = np.zeros_like(femur_mask, dtype=np.uint8)
+    color_mask[tibia_mask] = 1  # Green for tibia
+    color_mask[femur_mask] = 2  # Red for femur
+    # Background remains 0 (black)
+    
+    return color_mask
+
+def bone_segmentation_task3(input_path, output_dir, bone_threshold=200, min_component_size=10000, 
+                           morph_iterations=2, target_size=(64, 64, 64), visualize=True):
+    """
+    Main function for bone segmentation optimized for Task III.
     
     Args:
         input_path: Path to the input CT scan file
@@ -127,9 +149,15 @@ def bone_segmentation(input_path, output_dir, bone_threshold=300, min_component_
         bone_threshold: Intensity threshold for bone segmentation
         min_component_size: Minimum size of connected components to keep
         morph_iterations: Number of iterations for morphological operations
+        target_size: Target size for CNN input (depth, height, width)
         visualize: Whether to visualize the segmentation results
+        
+    Returns:
+        regions: Dictionary containing the three regions as PyTorch tensors
+        masks: Dictionary containing the original masks
+        metadata: Dictionary containing affine transform and header info
     """
-    print("Starting bone segmentation...")
+    print("Starting bone segmentation for Task III...")
     
     # Load the CT scan data
     print(f"Loading CT scan data from: {input_path}")
@@ -151,65 +179,97 @@ def bone_segmentation(input_path, output_dir, bone_threshold=300, min_component_
     
     # Apply initial morphological operations to clean up the mask
     print("Applying initial cleaning operations...")
-    bone_mask = ndimage.binary_closing(bone_mask, iterations=2)  # Fill small holes first
+    bone_mask = ndimage.binary_closing(bone_mask, iterations=2)
     
     # Separate femur and tibia
     print("Separating femur and tibia...")
     femur_mask, tibia_mask = separate_femur_tibia(bone_mask, min_size=min_component_size)
     
     # Apply morphological operations to clean up the individual masks
-    print("Applying morphological operations to clean up the masks...")
+    print("Applying morphological operations...")
     femur_mask = apply_morphological_operations(femur_mask, iterations=morph_iterations)
     tibia_mask = apply_morphological_operations(tibia_mask, iterations=morph_iterations)
     
-    # Make sure femur and tibia don't overlap (in case of any overlapping voxels)
+    # Handle overlapping voxels
     overlap = femur_mask & tibia_mask
     if np.any(overlap):
-        print(f"Warning: Found {np.sum(overlap)} overlapping voxels between femur and tibia.")
-        # Remove overlapping voxels from both masks
+        print(f"Warning: Found {np.sum(overlap)} overlapping voxels. Resolving...")
         femur_mask &= ~overlap
         tibia_mask &= ~overlap
     
-    # Combine the masks for visualization and output
-    combined_mask = np.zeros_like(bone_mask, dtype=np.int16)
-    combined_mask[femur_mask] = 1  # Femur labeled as 1
-    combined_mask[tibia_mask] = 2  # Tibia labeled as 2
+    # Create color-coded mask for Task III
+    color_mask = create_color_coded_mask(femur_mask, tibia_mask)
     
-    # Check if the output directory exists, if not, create it
+    # Prepare regions for CNN input
+    regions = prepare_regions_for_cnn(data, femur_mask, tibia_mask, target_size)
+    
+    # Create output directory
     if not os.path.exists(output_dir):
         print(f"Creating output directory: {output_dir}")
         os.makedirs(output_dir, exist_ok=True)
     
     # Save the segmentation results
     print("Saving segmentation results...")
-    save_nifti(femur_mask.astype(np.int16), affine, header, os.path.join(output_dir, "femur_segmentation.nii.gz"))
-    save_nifti(tibia_mask.astype(np.int16), affine, header, os.path.join(output_dir, "tibia_segmentation.nii.gz"))
-    save_nifti(combined_mask, affine, header, os.path.join(output_dir, "combined_segmentation.nii.gz"))
+    save_nifti(femur_mask.astype(np.int16), affine, header, 
+               os.path.join(output_dir, "femur_mask.nii.gz"))
+    save_nifti(tibia_mask.astype(np.int16), affine, header, 
+               os.path.join(output_dir, "tibia_mask.nii.gz"))
+    save_nifti(color_mask.astype(np.int16), affine, header, 
+               os.path.join(output_dir, "task3_color_mask.nii.gz"))
     
-    # Visualize the segmentation results if requested
+    # Save regions as numpy arrays for later use
+    np.save(os.path.join(output_dir, "tibia_region.npy"), regions['tibia'].numpy())
+    np.save(os.path.join(output_dir, "femur_region.npy"), regions['femur'].numpy())
+    np.save(os.path.join(output_dir, "background_region.npy"), regions['background'].numpy())
+    
+    # Visualize if requested
     if visualize:
         print("Visualizing segmentation results...")
-        visualize_segmentation(data, femur_mask, tibia_mask, num_slices=5, axis=2)  # Axial slices
+        visualize_segmentation(data, femur_mask, tibia_mask, num_slices=5, axis=2)
         visualize_segmentation(data, femur_mask, tibia_mask, num_slices=5, axis=1)  # Coronal slices
         visualize_segmentation(data, femur_mask, tibia_mask, num_slices=5, axis=0)  # Sagittal slices
         create_segmentation_animation(data, femur_mask, tibia_mask, axis=1, interval=100, save_path=os.path.join(output_dir, "animation_axial.gif"))
-
-    print("Bone segmentation completed successfully.")
     
-    return femur_mask, tibia_mask, combined_mask, affine, header
+    # Prepare return data
+    masks = {
+        'femur': femur_mask,
+        'tibia': tibia_mask,
+        'color_mask': color_mask
+    }
+    
+    metadata = {
+        'affine': affine,
+        'header': header,
+        'original_shape': data.shape,
+        'target_shape': target_size
+    }
+    
+    print("Task III bone segmentation completed successfully.")
+    print(f"Regions prepared for CNN input with shape: {target_size}")
+    
+    return regions, masks, metadata
 
 if __name__ == "__main__":
     # Path to the CT scan file and output directory
-    input_path ="data\\3702_left_knee.nii.gz"
-    output_dir = "results\\task1_1"
+    input_path = "data/3702_left_knee.nii.gz"
+    output_dir = "results/task3_segmentation"
     
-    # Parameters for bone segmentation
-    # Based on the histogram, a threshold of 200-300 HU should work well for bone
+    # Parameters optimized for Task III
     bone_threshold = 200  # HU threshold for bone segmentation
-    min_component_size = 10000  # Minimum size of connected components to keep
-    morph_iterations = 2  # Number of iterations for morphological operations
+    min_component_size = 10000  # Minimum size of connected components
+    morph_iterations = 2  # Morphological operations iterations
+    target_size = (64, 64, 64)  # Target size for CNN input
     
-    # Run the bone segmentation
-    femur_mask, tibia_mask, combined_mask, affine, header = bone_segmentation(
-        input_path, output_dir, bone_threshold, min_component_size, morph_iterations, visualize=True
+    # Run the segmentation
+    regions, masks, metadata = bone_segmentation_task3(
+        input_path, output_dir, bone_threshold, min_component_size, 
+        morph_iterations, target_size, visualize=True
     )
+    
+    # Print summary
+    print("\n=== Task III Segmentation Summary ===")
+    print(f"Input shape: {metadata['original_shape']}")
+    print(f"Target shape: {metadata['target_shape']}")
+    print(f"Regions available: {list(regions.keys())}")
+    print(f"Tensor shapes: {[regions[k].shape for k in regions.keys()]}")
+    print("Ready for 3D CNN feature extraction!")
