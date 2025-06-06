@@ -8,12 +8,6 @@ def main():
     # Path to the CT scan file
     file_path = 'data\\3702_left_knee.nii.gz'  
     
-    # Check if the file exists
-    if not os.path.exists(file_path):
-        print(f"File not found: {file_path}")
-        print("Please download the file from the provided link and adjust the path accordingly.")
-        return
-    
     # Load the CT scan data
     print("Loading CT scan data...")
     data, affine, header = load_ct_data(file_path)
@@ -60,7 +54,6 @@ def main():
     print("Animation saved as 'ct_scan_animation_sagittal.gif'")
     anim.event_source.stop()  # Stop the animation event source
     
-    # Display the animation (this will only work in notebooks or with plt.show())
     plt.show()
 
 if __name__ == "__main__":

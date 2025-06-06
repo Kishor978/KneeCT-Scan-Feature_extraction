@@ -1,9 +1,7 @@
 import os
 import numpy as np
 from scipy import ndimage
-import matplotlib.pyplot as plt
 from scipy.ndimage import binary_fill_holes
-from matplotlib.animation import FuncAnimation
 from utils import load_ct_data, save_nifti, visualize_segmentation, create_segmentation_animation,apply_morphological_operations, prepare_regions_for_cnn
 
 def preprocess_volume(data, sigma=1.0):
@@ -138,7 +136,7 @@ def create_color_coded_mask(femur_mask, tibia_mask):
     
     return color_mask
 
-def bone_segmentation_task3(input_path, output_dir, bone_threshold=200, min_component_size=10000, 
+def bone_segmentation_task(input_path, output_dir, bone_threshold=200, min_component_size=10000, 
                            morph_iterations=2, target_size=(64, 64, 64), visualize=True):
     """
     Main function for bone segmentation optimized for Task III.
@@ -215,7 +213,7 @@ def bone_segmentation_task3(input_path, output_dir, bone_threshold=200, min_comp
     save_nifti(tibia_mask.astype(np.int16), affine, header, 
                os.path.join(output_dir, "tibia_mask.nii.gz"))
     save_nifti(color_mask.astype(np.int16), affine, header, 
-               os.path.join(output_dir, "task3_color_mask.nii.gz"))
+               os.path.join(output_dir, "color_mask.nii.gz"))
     
     # Save regions as numpy arrays for later use
     np.save(os.path.join(output_dir, "tibia_region.npy"), regions['tibia'].numpy())
@@ -252,7 +250,7 @@ def bone_segmentation_task3(input_path, output_dir, bone_threshold=200, min_comp
 if __name__ == "__main__":
     # Path to the CT scan file and output directory
     input_path = "data/3702_left_knee.nii.gz"
-    output_dir = "results/task3_segmentation"
+    output_dir = "results/segmentation"
     
     # Parameters optimized for Task III
     bone_threshold = 200  # HU threshold for bone segmentation
@@ -261,7 +259,7 @@ if __name__ == "__main__":
     target_size = (64, 64, 64)  # Target size for CNN input
     
     # Run the segmentation
-    regions, masks, metadata = bone_segmentation_task3(
+    regions, masks, metadata = bone_segmentation_task(
         input_path, output_dir, bone_threshold, min_component_size, 
         morph_iterations, target_size, visualize=True
     )
