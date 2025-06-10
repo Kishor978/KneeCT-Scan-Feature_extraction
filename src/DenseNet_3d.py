@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 import torchvision.models as models
+from torch.nn import Conv2d, BatchNorm2d
+import copy
 import warnings
 
 class DenseNet3D(nn.Module):
@@ -14,7 +16,7 @@ class DenseNet3D(nn.Module):
         
         # Build a simplified but functional 3D DenseNet
         # Initial convolution
-        self.conv0 = nn.Conv3d(3, 64, kernel_size=(3, 7, 7), stride=(1, 2, 2), padding=(1, 3, 3), bias=False)
+        self.conv0 = nn.Conv3d(1, 64, kernel_size=(3, 7, 7), stride=(1, 2, 2), padding=(1, 3, 3), bias=False)
         self.norm0 = nn.BatchNorm3d(64)
         self.relu0 = nn.ReLU(inplace=True)
         self.pool0 = nn.MaxPool3d(kernel_size=(1, 3, 3), stride=(1, 2, 2), padding=(0, 1, 1))
@@ -75,22 +77,82 @@ class DenseNet3D(nn.Module):
         )
     
     def _initialize_from_2d(self):
-        """Initialize 3D weights from pretrained 2D DenseNet"""
-        print("Loading pretrained 2D weights...")
+        """Fully initialize 3D DenseNet weights from pretrained 2D DenseNet121"""
+        import torchvision.models as models
+        from torch.nn import Conv2d, BatchNorm2d
+        import copy
+
+        print("Inflating full DenseNet121 from 2D pretrained weights...")
+
+        # Load 2D pretrained model
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             model_2d = models.densenet121(weights=models.DenseNet121_Weights.IMAGENET1K_V1)
-        
-        # Map 2D weights to 3D layers
-        state_dict_2d = model_2d.state_dict()
-        
-        # Initialize our 3D model weights
-        self._copy_conv_weights(state_dict_2d, 'features.conv0.weight', self.conv0)
-        self._copy_bn_weights(state_dict_2d, 'features.norm0', self.norm0)
-        
-        # For simplicity, we'll initialize the rest randomly but with proper scaling
-        # In a full implementation, you'd map each 2D layer to corresponding 3D layer
-        self._init_remaining_weights()
+
+        def inflate_conv2d_to_conv3d(conv2d, in_channels_override=None):
+            in_channels = in_channels_override or conv2d.in_channels
+            out_channels = conv2d.out_channels
+            k_h, k_w = conv2d.kernel_size
+            d = 3  # Temporal depth
+            conv3d = nn.Conv3d(
+                in_channels=in_channels,
+                out_channels=out_channels,
+                kernel_size=(d, k_h, k_w),
+                stride=(1, *conv2d.stride),
+                padding=(d // 2, *conv2d.padding),
+                bias=(conv2d.bias is not None)
+            )
+            with torch.no_grad():
+                weight2d = conv2d.weight.data
+                if in_channels == weight2d.shape[1]:
+                    weight3d = weight2d.unsqueeze(2).repeat(1, 1, d, 1, 1) / d
+                else:
+                    # For grayscale input: average across RGB channels
+                    weight2d_avg = weight2d.mean(dim=1, keepdim=True)
+                    weight3d = weight2d_avg.unsqueeze(2).repeat(1, 1, d, 1, 1) / d
+                conv3d.weight.copy_(weight3d)
+                if conv2d.bias is not None:
+                    conv3d.bias.copy_(conv2d.bias.data)
+            return conv3d
+
+        def inflate_bn2d_to_bn3d(bn2d):
+            bn3d = nn.BatchNorm3d(bn2d.num_features)
+            bn3d.weight.data.copy_(bn2d.weight.data)
+            bn3d.bias.data.copy_(bn2d.bias.data)
+            bn3d.running_mean.data.copy_(bn2d.running_mean.data)
+            bn3d.running_var.data.copy_(bn2d.running_var.data)
+            return bn3d
+
+        def replace_module_2d_to_3d(module_3d, module_2d):
+            for name, mod_2d in module_2d.named_children():
+                if isinstance(mod_2d, Conv2d):
+                    mod_3d = inflate_conv2d_to_conv3d(mod_2d)
+                elif isinstance(mod_2d, BatchNorm2d):
+                    mod_3d = inflate_bn2d_to_bn3d(mod_2d)
+                else:
+                    mod_3d = copy.deepcopy(mod_2d)
+
+                if hasattr(module_3d, name):
+                    setattr(module_3d, name, mod_3d)
+
+                # Recurse
+                if hasattr(module_3d, name) and hasattr(mod_2d, 'named_children'):
+                    replace_module_2d_to_3d(getattr(module_3d, name), mod_2d)
+
+        # Inflate base layers
+        self.conv0 = inflate_conv2d_to_conv3d(model_2d.features.conv0, in_channels_override=1)
+        self.norm0 = inflate_bn2d_to_bn3d(model_2d.features.norm0)
+
+        # Inflate dense blocks and transitions
+        replace_module_2d_to_3d(self.denseblock1, model_2d.features.denseblock1)
+        replace_module_2d_to_3d(self.transition1, model_2d.features.transition1)
+        replace_module_2d_to_3d(self.denseblock2, model_2d.features.denseblock2)
+        replace_module_2d_to_3d(self.transition2, model_2d.features.transition2)
+        replace_module_2d_to_3d(self.denseblock3, model_2d.features.denseblock3)
+        replace_module_2d_to_3d(self.transition3, model_2d.features.transition3)
+        replace_module_2d_to_3d(self.denseblock4, model_2d.features.denseblock4)
+
+        print("✅ Full DenseNet feature extractor inflated from 2D.")
     
     def _copy_conv_weights(self, state_dict_2d, key_2d, conv3d_layer):
         """Copy and inflate 2D conv weights to 3D"""
@@ -280,7 +342,7 @@ def test_conversion():
         
         # Test input
         print("\nTesting with input shape: (1, 3, 16, 224, 224)")
-        dummy_input = torch.randn(1, 3, 16, 224, 224)
+        dummy_input = torch.randn(1, 1, 64, 64, 64)
         
         with torch.no_grad():
             # Test feature extraction

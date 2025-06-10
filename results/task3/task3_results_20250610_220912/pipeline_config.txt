@@ -1,0 +1,11 @@
+TASK III PIPELINE CONFIGURATION
+========================================
+
+bone_threshold: 200
+min_component_size: 10000
+morph_iterations: 2
+target_size: (64, 64, 64)
+use_pretrained: True
+device: cpu
+save_intermediate: True
+visualize: False
