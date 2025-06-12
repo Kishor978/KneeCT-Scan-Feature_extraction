@@ -246,28 +246,3 @@ def bone_segmentation_task(input_path, output_dir, bone_threshold=200, min_compo
     print(f"Regions prepared for CNN input with shape: {target_size}")
     
     return regions, masks, metadata
-
-if __name__ == "__main__":
-    # Path to the CT scan file and output directory
-    input_path = "data/3702_left_knee.nii.gz"
-    output_dir = "results/segmentation"
-    
-    # Parameters optimized for Task III
-    bone_threshold = 200  # HU threshold for bone segmentation
-    min_component_size = 10000  # Minimum size of connected components
-    morph_iterations = 2  # Morphological operations iterations
-    target_size = (64, 64, 64)  # Target size for CNN input
-    
-    # Run the segmentation
-    regions, masks, metadata = bone_segmentation_task(
-        input_path, output_dir, bone_threshold, min_component_size, 
-        morph_iterations, target_size, visualize=True
-    )
-    
-    # Print summary
-    print("\n=== Task III Segmentation Summary ===")
-    print(f"Input shape: {metadata['original_shape']}")
-    print(f"Target shape: {metadata['target_shape']}")
-    print(f"Regions available: {list(regions.keys())}")
-    print(f"Tensor shapes: {[regions[k].shape for k in regions.keys()]}")
-    print("Ready for 3D CNN feature extraction!")

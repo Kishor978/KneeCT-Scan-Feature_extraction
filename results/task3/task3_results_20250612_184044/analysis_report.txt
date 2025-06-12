@@ -2,9 +2,9 @@ TASK III ANALYSIS REPORT
 ==================================================
 
 PIPELINE INFORMATION:
-Timestamp: 2025-06-10 22:10:27
+Timestamp: 2025-06-12 18:41:50
 Input file: data/3702_left_knee.nii.gz
-Output directory: results/task3\task3_results_20250610_220912
+Output directory: results/task3\task3_results_20250612_184044
 
 DATA INFORMATION:
 Original shape: (512, 512, 216)
@@ -19,7 +19,7 @@ Background voxels: 56,096,409 (99.07%)
 
 COSINE SIMILARITY RESULTS:
 image_id  layer_116_dense_conv_15_5_tibia_vs_femur  layer_116_dense_conv_15_5_tibia_vs_background  layer_116_dense_conv_15_5_femur_vs_background  layer_114_dense_conv_14_5_tibia_vs_femur  layer_114_dense_conv_14_5_tibia_vs_background  layer_114_dense_conv_14_5_femur_vs_background  layer_112_dense_conv_13_5_tibia_vs_femur  layer_112_dense_conv_13_5_tibia_vs_background  layer_112_dense_conv_13_5_femur_vs_background
-sample_1                                       1.0                                       0.999867                                       0.999866                                       1.0                                       0.999932                                       0.999933                                       1.0                                       0.999798                                       0.999799
+sample_1                                       1.0                                       0.999934                                       0.999933                                       1.0                                       0.999896                                       0.999894                                       1.0                                       0.999895                                       0.999894
 
 INTERPRETATION:
 layer_116_dense_conv_15_5_tibia_vs_femur: 1.0000 - High similarity
@@ -29,5 +29,5 @@ layer_114_dense_conv_14_5_tibia_vs_femur: 1.0000 - High similarity
 layer_114_dense_conv_14_5_tibia_vs_background: 0.9999 - High similarity
 layer_114_dense_conv_14_5_femur_vs_background: 0.9999 - High similarity
 layer_112_dense_conv_13_5_tibia_vs_femur: 1.0000 - High similarity
-layer_112_dense_conv_13_5_tibia_vs_background: 0.9998 - High similarity
-layer_112_dense_conv_13_5_femur_vs_background: 0.9998 - High similarity
+layer_112_dense_conv_13_5_tibia_vs_background: 0.9999 - High similarity
+layer_112_dense_conv_13_5_femur_vs_background: 0.9999 - High similarity

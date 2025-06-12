@@ -1,6 +1,6 @@
 import numpy as np
+from scipy.ndimage import zoom
 import torch
-
 
  # Normalize intensity values to [0, 1] range for CNN input
 def normalize_volume(volume):
@@ -11,9 +11,7 @@ def normalize_volume(volume):
     return volume
 
 # Resize volumes to target size for CNN input
-def resize_volume(volume, target_size):
-    from scipy.ndimage import zoom
-    
+def resize_volume(volume, target_size):    
     current_size = volume.shape
     zoom_factors = [target_size[i] / current_size[i] for i in range(3)]
     resized_volume = zoom(volume, zoom_factors, order=1)  # Linear interpolation
